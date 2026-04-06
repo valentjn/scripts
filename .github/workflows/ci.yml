@@ -1,0 +1,30 @@
+# Copyright (C) 2026 Julian Valentin
+#
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+name: CI
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  ci:
+    name: CI
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@v6
+      - name: install uv
+        run: curl --fail --location https://astral.sh/uv/install.sh | sh
+      - name: check formatting with Ruff
+        run: uv run ruff format --diff
+      - name: lint with mypy
+        run: uv run mypy
+      - name: lint with Ruff
+        run: uv run ruff check
+      - name: lint with ty
+        run: uv run ty check
