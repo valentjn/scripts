@@ -149,7 +149,7 @@ class Compression(StrEnum):
 
 DEFAULT_COMPRESSION = Compression.ZSTD
 """Default compression if none is specified."""
-DEFAULT_BACKUP_COUNT = 3
+DEFAULT_BACKUP_COUNT = 2
 """Default number of backups to keep if none is specified."""
 
 
