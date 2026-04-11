@@ -22,9 +22,25 @@ jobs:
         uses: astral-sh/setup-uv@v7
       - name: check formatting with Ruff
         run: uv run ruff format --diff
-      - name: lint with mypy
-        run: uv run mypy
       - name: lint with Ruff
         run: uv run ruff check
-      - name: lint with ty
-        run: uv run ty check
+      - name: lint with mypy and ty
+        run: |
+          for SCRIPT in src/*.py
+          do
+            echo
+            echo "linting $SCRIPT"
+            uv sync --script "$SCRIPT"
+            SCRIPT_PYTHON="$(uv python find --script "$SCRIPT")"
+            SCRIPT_SITE_PACKAGES="$("$SCRIPT_PYTHON" -c '
+              import site
+              print(next(p for p in site.getsitepackages() if "site-packages" in p))
+            ')"
+            echo "using site-packages: $SCRIPT_SITE_PACKAGES"
+            echo
+            echo "running mypy on $SCRIPT"
+            PYTHONPATH="$SCRIPT_SITE_PACKAGES" uv run mypy "$SCRIPT"
+            echo
+            echo "running ty on $SCRIPT"
+            PYTHONPATH="$SCRIPT_SITE_PACKAGES" uv run ty check "$SCRIPT"
+          done

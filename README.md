@@ -5,6 +5,6 @@
    - file, You can obtain one at https://mozilla.org/MPL/2.0/.
    -->
 
-# stupid-backup
+# Scripts
 
-A tool that backs up directories as archives, supporting SSH and Linux file permissions.
+Various scripts.
