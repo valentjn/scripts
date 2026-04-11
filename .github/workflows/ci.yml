@@ -19,7 +19,7 @@ jobs:
       - name: checkout
         uses: actions/checkout@v6
       - name: install uv
-        run: curl --fail --location https://astral.sh/uv/install.sh | sh
+        uses: astral-sh/setup-uv@v7
       - name: check formatting with Ruff
         run: uv run ruff format --diff
       - name: lint with mypy
