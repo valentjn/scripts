@@ -19,7 +19,7 @@ jobs:
       - name: checkout
         uses: actions/checkout@v6
       - name: install uv
-        uses: astral-sh/setup-uv@v7.6.0
+        uses: astral-sh/setup-uv@v8.0.0
       - name: check formatting with Ruff
         run: uv run ruff format --diff
       - name: lint with Ruff
