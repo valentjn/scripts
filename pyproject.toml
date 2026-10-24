@@ -39,6 +39,7 @@ ignore = [
     "start-process-with-partial-path",
     "subprocess-without-shell-equals-true",
     "suspicious-subprocess-import",
+    "too-many-arguments",
     "unspecified-encoding",
 ]
 preview = true
