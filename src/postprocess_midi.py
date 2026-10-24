@@ -3,7 +3,7 @@
 # dependencies = [
 #     "mido>=1.3.3",
 # ]
-# requires-python = ">=3.14"
+# requires-python = ">=3.15"
 # ///
 # Copyright (C) 2026 Julian Valentin
 #
@@ -333,25 +333,23 @@ def get_metronome_messages(
     """
     if not click:
         click = DEFAULT_METRONOME_CLICK
-    duration = max([sum(m.time for m in track) for track in midi_file.tracks])
+    duration = max(sum(m.time for m in track) for track in midi_file.tracks)
     messages = []
     for start_time, end_time in pairwise([*change_times, duration + 1]):
         ticks_per_beat = midi_file.ticks_per_beat * 4 / denominator
         click_duration = round(ticks_per_beat / 16)
         time = start_time
         while time < end_time:
-            messages.append(
+            messages += [
                 MessageWithAbsoluteTime(
                     message=mido.Message("note_on", note=click.note, velocity=click.velocity, channel=channel, time=0),
                     absolute_time=time,
-                )
-            )
-            messages.append(
+                ),
                 MessageWithAbsoluteTime(
                     message=mido.Message("note_off", note=click.note, velocity=0, channel=channel, time=0),
                     absolute_time=time + click_duration,
-                )
-            )
+                ),
+            ]
             time += round(ticks_per_beat)
     messages.sort(key=lambda m: (m.absolute_time, 0 if m.message.type == "note_off" else 1))
     return messages

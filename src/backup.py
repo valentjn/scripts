@@ -4,7 +4,7 @@
 #     "pydantic>=2.12.5",
 #     "pyyaml>=6.0.3",
 # ]
-# requires-python = ">=3.14"
+# requires-python = ">=3.15"
 # ///
 # Copyright (C) 2026 Julian Valentin
 #
@@ -247,7 +247,7 @@ class Configuration(SharedConfiguration):
     def from_file(path: Path) -> Configuration:
         """Read and create configuration object from a file."""
         _logger.info("reading configuration: %s", path)
-        with path.open(encoding="utf-8") as file:
+        with path.open() as file:
             return Configuration.model_validate(safe_load(file))
 
 

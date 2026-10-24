@@ -9,7 +9,7 @@ name = "scripts"
 version = "1.0.0"
 description = "Various scripts"
 readme = "README.md"
-requires-python = ">=3.14.0"
+requires-python = ">=3.15.0"
 dependencies = []
 
 [dependency-groups]
@@ -29,12 +29,18 @@ line-length = 120
 
 [tool.ruff.lint]
 ignore = [
-    "COM812",
-    "D203",
-    "D213",
-    "S310",
-    "S311",
-    "S603",
-    "S607",
+    "docstring-missing-exception",
+    "docstring-missing-returns",
+    "docstring-missing-yields",
+    "incorrect-blank-line-before-class",
+    "missing-trailing-comma",
+    "multi-line-summary-second-line",
+    "start-process-with-partial-path",
+    "subprocess-without-shell-equals-true",
+    "suspicious-subprocess-import",
+    "unspecified-encoding",
 ]
+preview = true
 select = ["ALL"]
+
+[tool.ty]

@@ -1,9 +1,9 @@
 #!/usr/bin/env -S uv run --script
 # /// script
-# requires-python = ">=3.14"
 # dependencies = [
 #     "pydantic>=2.12.5",
 # ]
+# requires-python = ">=3.15"
 # ///
 # Copyright (C) 2026 Julian Valentin
 #
@@ -50,7 +50,7 @@ _DATETIME_PATTERN = re.compile(
 """Pattern for ExifTool datetimes."""
 
 
-def validate_exiftool_datetime(value: Any) -> datetime:  # noqa: ANN401
+def validate_exiftool_datetime(value: Any) -> datetime:  # ruff: ignore[any-type]
     """Validate a datetime string that has been output by ExifTool.
 
     :param value: Datetime string.
@@ -58,7 +58,7 @@ def validate_exiftool_datetime(value: Any) -> datetime:  # noqa: ANN401
     """
     if not isinstance(value, str):
         msg = "datetime must be str"
-        raise ValueError(msg)  # noqa: TRY004
+        raise ValueError(msg)  # ruff: ignore[type-check-without-type-error]
     match = _DATETIME_PATTERN.fullmatch(value)
     if match is None:
         msg = "invalid datetime"
@@ -186,7 +186,7 @@ def collect_media_paths(glob_patterns: Sequence[str]) -> list[Path]:
     for glob_pattern in glob_patterns:
         media_paths += sorted(
             make_path_relative(path)
-            for p in glob(glob_pattern, recursive=True)  # noqa: PTH207
+            for p in glob(glob_pattern, recursive=True)  # ruff: ignore[glob]
             if (path := Path(p)).suffix.lower() in supported_suffixes
         )
     return media_paths
@@ -284,13 +284,9 @@ def get_metadata_list(media_paths: Sequence[Path], exiftool_path: Path) -> Metad
     """
     with TemporaryDirectory() as tmp_dir_str:
         path_list_path = Path(tmp_dir_str) / "media_paths.txt"
-        path_list_path.write_text("\n".join(str(p) for p in media_paths), encoding="utf-8", newline="\n")
+        path_list_path.write_text("\n".join(str(p) for p in media_paths), newline="\n")
         process = run(
-            [exiftool_path, "-groupNames", "-json", "-quiet", "-@", path_list_path],
-            check=True,
-            encoding="utf-8",
-            stdout=PIPE,
-            text=True,
+            [exiftool_path, "-groupNames", "-json", "-quiet", "-@", path_list_path], check=True, stdout=PIPE, text=True
         )
     return MetadataList.model_validate_json(process.stdout)
 
