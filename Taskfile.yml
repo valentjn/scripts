@@ -1,0 +1,86 @@
+# yaml-language-server: $schema=https://taskfile.dev/schema.json
+# Copyright (C) 2026 Julian Valentin
+#
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+version: "3"
+
+env:
+  FORCE_COLOR: "1"
+  VIRTUAL_ENV: ""
+
+output: prefixed
+
+tasks:
+  check:
+    cmds:
+      - task: check:uv
+      - task: check:rest
+
+  check:rest:
+    internal: true
+    sources:
+      - src/*.py
+    method: none
+    deps:
+      - check:ruff-format
+      - check:ruff-lint
+      - for: sources
+        task: check:script
+        vars:
+          SCRIPT: "{{.ITEM}}"
+      - for: sources
+        task: run:{{.ITEM | osBase | trimSuffix ".py"}}
+        vars:
+          ARGUMENTS: --help > /dev/null
+
+  check:mypy: &single_script_check
+    cmd: uv run mypy '{{.SCRIPT}}'
+    env:
+      PYTHONPATH: "{{.SCRIPT_SITE_PACKAGES}}"
+
+  check:ruff-format:
+    cmd: uv run ruff format --check
+
+  check:ruff-lint:
+    cmd: uv run ruff check
+
+  check:script:
+    deps:
+      - for:
+          - check:mypy
+          - check:ty
+        task: "{{.ITEM}}"
+        vars:
+          SCRIPT: "{{.SCRIPT}}"
+          SCRIPT_SITE_PACKAGES: "{{.SCRIPT_SITE_PACKAGES}}"
+    vars:
+      SCRIPT_SITE_PACKAGES:
+        sh: |
+          uv sync --script "{{.SCRIPT}}"
+          SCRIPT_PYTHON="$(uv python find --script "$SCRIPT")"
+          "$SCRIPT_PYTHON" -c 'import site; print(next(p for p in site.getsitepackages() if "site-packages" in p))'
+
+  check:ty:
+    <<: *single_script_check
+    cmd: uv run ty check --color=always '{{.SCRIPT}}'
+
+  check:uv:
+    cmd: uv lock --check
+
+  default:
+    cmds:
+      - task: prepare
+      - task: format
+      - task: check
+
+  format:
+    cmd: uv run ruff format
+
+  prepare:
+    cmd: uv sync
+
+  run:*:
+    cmd: uv run --script 'src/{{index .MATCH 0}}.py' {{coalesce .ARGUMENTS .CLI_ARGS}}
