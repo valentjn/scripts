@@ -22,10 +22,10 @@ The following actions are performed on each MIDI file:
   clicks are adjusted accordingly.
 """
 
-import argparse
-import logging
+from argparse import ArgumentParser, BooleanOptionalAction, Namespace
 from dataclasses import dataclass
 from itertools import pairwise
+from logging import INFO, basicConfig, getLogger
 from pathlib import Path
 from shutil import copyfile
 from statistics import mean
@@ -54,7 +54,7 @@ DEFAULT_VELOCITY_CURVE = ((MIN_VELOCITY, 0), (60, 60), (MAX_VELOCITY, 100))
 DEFAULT_METRONOME_CLICK = MetronomeClick(note=76, velocity=80)
 DEFAULT_METRONOME_DENOMINATORS = (2.0, 4.0, 8.0)
 
-_logger = logging.getLogger(__name__)
+_logger = getLogger(__name__)
 
 
 def main(string_arguments: Sequence[str] | None = None) -> None:
@@ -63,7 +63,7 @@ def main(string_arguments: Sequence[str] | None = None) -> None:
     :param string_arguments: Command line arguments as a list of strings. If ``None``, arguments will be taken from the
         command line.
     """
-    logging.basicConfig(level=logging.INFO, format="%(message)s")
+    basicConfig(level=INFO, format="%(message)s")
     arguments = parse_arguments(string_arguments)
     for input_path in arguments.input_paths:
         process_file(
@@ -75,14 +75,14 @@ def main(string_arguments: Sequence[str] | None = None) -> None:
         )
 
 
-def parse_arguments(string_arguments: Sequence[str] | None = None) -> argparse.Namespace:
+def parse_arguments(string_arguments: Sequence[str] | None = None) -> Namespace:
     """Parse command line arguments.
 
     :param string_arguments: Command line arguments as a list of strings. If ``None``, arguments will be taken from the
         command line.
     :return: Parsed arguments.
     """
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = ArgumentParser(description=__doc__)
     parser.add_argument(
         "-d",
         "--metronome-denominators",
@@ -95,7 +95,7 @@ def parse_arguments(string_arguments: Sequence[str] | None = None) -> argparse.N
     parser.add_argument(
         "-n",
         "--dry-run",
-        action=argparse.BooleanOptionalAction,
+        action=BooleanOptionalAction,
         help="If set, the script will only print the actions it would perform, but not write any files.",
     )
     parser.add_argument(

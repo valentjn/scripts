@@ -13,12 +13,11 @@
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 """Stupid backup tool."""
 
-import asyncio
 import os
 import re
 import subprocess
 from argparse import ArgumentParser, Namespace
-from asyncio import StreamReader, create_subprocess_exec, gather, to_thread, wait_for
+from asyncio import StreamReader, create_subprocess_exec, gather, run, to_thread, wait_for
 from datetime import UTC, datetime
 from enum import StrEnum, auto
 from itertools import groupby
@@ -253,7 +252,7 @@ class Configuration(SharedConfiguration):
 
 def main(string_arguments: Sequence[str] | None = None) -> None:
     """Run ``main_async()``."""
-    asyncio.run(main_async(string_arguments))
+    run(main_async(string_arguments))
 
 
 async def main_async(string_arguments: Sequence[str] | None = None) -> None:
