@@ -39,9 +39,10 @@ repository.
 import re
 import shlex
 from argparse import ArgumentParser, BooleanOptionalAction, Namespace, RawDescriptionHelpFormatter
+from dataclasses import dataclass
 from difflib import unified_diff
 from enum import StrEnum, auto
-from logging import DEBUG, INFO, basicConfig, getLogger
+from logging import INFO, basicConfig, getLogger
 from os import environ
 from pathlib import Path
 from socket import gethostname
@@ -92,6 +93,20 @@ class GitError(Exception):
         self.add_note(f"stderr:\n{subprocess.stderr}")
 
 
+@dataclass
+class FileUpdate:
+    """Update of a file to be applied."""
+
+    path: Path
+    """Path of the file to update."""
+    text: str
+    """New text of the file."""
+    local: bool
+    """Whether the file is a local file."""
+    relative_to: Path | None = None
+    """Directory to display the path relative to in log messages, or ``None`` to display the full path."""
+
+
 def main(string_arguments: Sequence[str] | None = None) -> None:
     """Run main function.
 
@@ -99,7 +114,7 @@ def main(string_arguments: Sequence[str] | None = None) -> None:
         command line.
     """
     arguments = parse_arguments(string_arguments)
-    basicConfig(level=DEBUG if arguments.verbose else INFO, format="[%(levelname)s] %(message)s")
+    basicConfig(level=INFO, format="[%(levelname)s] %(message)s")
     computer_branch = get_computer_branch()
     with TemporaryDirectory() as tmp_dir_str:
         repository_dir = Path(tmp_dir_str) / "repo"
@@ -110,11 +125,19 @@ def main(string_arguments: Sequence[str] | None = None) -> None:
                 arguments.paths,
                 computer_branch,
                 arguments.message,
-                force=arguments.force,
                 dry_run=arguments.dry_run,
+                force=arguments.force,
+                interactive=arguments.interactive,
             )
         else:
-            pull(repository_dir, arguments.paths, computer_branch, force=arguments.force, dry_run=arguments.dry_run)
+            pull(
+                repository_dir,
+                arguments.paths,
+                computer_branch,
+                dry_run=arguments.dry_run,
+                force=arguments.force,
+                interactive=arguments.interactive,
+            )
 
 
 def parse_arguments(string_arguments: Sequence[str] | None = None) -> Namespace:
@@ -127,12 +150,17 @@ def parse_arguments(string_arguments: Sequence[str] | None = None) -> Namespace:
     parser.add_argument(
         "-f",
         "--force",
-        default=False,
         action=BooleanOptionalAction,
         help=(
             "resolve merge conflicts in favor of the local files when pushing and in favor of the main branch when "
             "pulling, without asking for confirmation (default: %(default)s)"
         ),
+    )
+    parser.add_argument(
+        "-i",
+        "--interactive",
+        action=BooleanOptionalAction,
+        help="ask before making changes (default: %(default)s)",
     )
     parser.add_argument(
         "-m",
@@ -143,9 +171,8 @@ def parse_arguments(string_arguments: Sequence[str] | None = None) -> Namespace:
     parser.add_argument(
         "-n",
         "--dry-run",
-        default=False,
         action=BooleanOptionalAction,
-        help="perform a dry run without making any changes (default: %(default)s)",
+        help="perform a dry run without making changes (default: %(default)s)",
     )
     parser.add_argument(
         "-r",
@@ -153,13 +180,6 @@ def parse_arguments(string_arguments: Sequence[str] | None = None) -> Namespace:
         dest="remote_url",
         default="git@github.com:valentjn/config.git",
         help="remote URL of Git repository to synchronize with (default: %(default)s)",
-    )
-    parser.add_argument(
-        "-v",
-        "--verbose",
-        default=False,
-        action=BooleanOptionalAction,
-        help="enable verbose output (default: %(default)s)",
     )
     parser.add_argument(
         "direction",
@@ -212,17 +232,19 @@ def push(
     computer_branch: str,
     message: str,
     *,
-    force: bool = False,
     dry_run: bool = False,
+    force: bool = False,
+    interactive: bool = False,
 ) -> None:
     """Push the configuration parts of the local files to the remote repository.
 
     :param repository_dir: Path of the cloned Git repository.
     :param paths: Paths of the local files to synchronize. If empty, all files in the main branch are used.
     :param computer_branch: Name of the computer branch.
-    :param force: Whether to resolve conflicts in favor of the local files without asking for confirmation.
-    :param dry_run: Whether to perform a dry run without making any changes.
     :param message: Commit message to use.
+    :param dry_run: Whether to perform a dry run without making changes.
+    :param force: Whether to resolve conflicts in favor of the local files without asking for confirmation.
+    :param interactive: Whether to ask before making changes.
     """
     local_paths = resolve_local_paths(repository_dir, paths)
     if not local_paths:
@@ -230,13 +252,17 @@ def push(
         return
     configs = {p: read_local_config(p) for p in local_paths}
     checkout_computer_branch(repository_dir, computer_branch, create_from_root=True)
-    changed = False
-    for local_path, config in configs.items():
-        upstream_path = repository_dir / get_relative_path(local_path)
-        changed = (
-            update_file(upstream_path, config, local=False, relative_to=repository_dir, dry_run=dry_run) or changed
-        )
-    if changed:
+    updates = [
+        FileUpdate(repository_dir / get_relative_path(local_path), config, local=False, relative_to=repository_dir)
+        for local_path, config in configs.items()
+    ]
+    changed_updates = get_confirmed_updates(
+        repository_dir, computer_branch, updates, dry_run=dry_run, interactive=interactive
+    )
+    if changed_updates is None:
+        return
+    write_updates(changed_updates, dry_run=dry_run)
+    if changed_updates:
         run_git(repository_dir, "add", "--all")
         run_git(repository_dir, "commit", "--message", message)
     else:
@@ -247,7 +273,13 @@ def push(
 
 
 def pull(
-    repository_dir: Path, paths: Sequence[Path], computer_branch: str, *, force: bool = False, dry_run: bool = False
+    repository_dir: Path,
+    paths: Sequence[Path],
+    computer_branch: str,
+    *,
+    dry_run: bool = False,
+    force: bool = False,
+    interactive: bool = False,
 ) -> None:
     """Pull the configuration parts of the upstream files to the local files.
 
@@ -255,7 +287,8 @@ def pull(
     :param paths: Paths of the local files to synchronize. If empty, all files in the main branch are used.
     :param computer_branch: Name of the computer branch.
     :param force: Whether to resolve conflicts in favor of the main branch without asking for confirmation.
-    :param dry_run: Whether to perform a dry run without making any changes.
+    :param dry_run: Whether to perform a dry run without making changes.
+    :param interactive: Whether to ask before making changes.
     """
     local_paths = resolve_local_paths(repository_dir, paths)
     if not local_paths:
@@ -273,10 +306,18 @@ def pull(
         p: f"{t[: m.start('config')]}{read_upstream_config(repository_dir, p)}{t[m.end('config') :]}"
         for p, (t, m) in local_files.items()
     }
-    push_branches(repository_dir, computer_branch, dry_run=dry_run)
     home_directory = get_home_directory()
-    for local_path, new_local_text in new_local_texts.items():
-        update_file(local_path, new_local_text, local=True, relative_to=home_directory, dry_run=dry_run)
+    updates = [
+        FileUpdate(local_path, new_local_text, local=True, relative_to=home_directory)
+        for local_path, new_local_text in new_local_texts.items()
+    ]
+    changed_updates = get_confirmed_updates(
+        repository_dir, computer_branch, updates, dry_run=dry_run, interactive=interactive
+    )
+    if changed_updates is None:
+        return
+    write_updates(changed_updates, dry_run=dry_run)
+    push_branches(repository_dir, computer_branch, dry_run=dry_run)
 
 
 def resolve_local_paths(repository_dir: Path, paths: Sequence[Path]) -> list[Path]:
@@ -354,38 +395,75 @@ def get_home_directory() -> Path:
     return Path(environ.get("HOME") or Path.home()).resolve()
 
 
-def update_file(path: Path, text: str, *, local: bool, relative_to: Path | None = None, dry_run: bool = False) -> bool:
-    """Update the given file with the provided text.
+def get_changed_updates(updates: Sequence[FileUpdate], *, dry_run: bool, interactive: bool) -> list[FileUpdate]:
+    """Log the diffs of the given updates and return the updates that change a file.
 
-    :param path: Path of the file to update.
-    :param text: Text to write to the file.
-    :param local: Whether the file is a local file.
-    :param relative_to: If provided, display the path relative to this directory in the log messages.
-    :param dry_run: If ``True``, do not actually write to the file.
-    :return: Whether the text differs from the old contents.
+    :param updates: Updates to check.
+    :param dry_run: Whether to log that the files would be updated instead of that they are updated.
+    :param interactive: Whether to apply the updates only after confirmation, so log that the files would be updated
+        instead of that they are updated.
+    :return: Updates that change a file.
     """
-    display_local = "local" if local else "remote"
-    display_path = (path.relative_to(relative_to) if relative_to else path).as_posix()
-    old_content = path.read_text() if path.is_file() else ""
-    if old_content == text:
-        _logger.info("no changes for %s %s", display_local, display_path)
-        return False
-    _logger.info("%s %s %s", "would update" if dry_run else "updating", display_local, display_path)
-    if _logger.isEnabledFor(DEBUG):
+    changed_updates = []
+    for update in updates:
+        display_local = "local" if update.local else "remote"
+        display_path = (update.path.relative_to(update.relative_to) if update.relative_to else update.path).as_posix()
+        old_content = update.path.read_text() if update.path.is_file() else ""
+        if old_content == update.text:
+            _logger.info("no changes for %s %s", display_local, display_path)
+            continue
+        changed_updates.append(update)
+        _logger.info("%s %s %s", "would update" if dry_run or interactive else "updating", display_local, display_path)
         diff_lines = unified_diff(
             old_content.splitlines(),
-            text.splitlines(),
+            update.text.splitlines(),
             fromfile=f"a/{display_local}/{display_path}",
             tofile=f"b/{display_local}/{display_path}",
             lineterm="",
             color=True,
         )
         for line in diff_lines:
-            _logger.debug(line)
-    if not dry_run or not local:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(text, newline="\n")
-    return True
+            _logger.info(line)
+    return changed_updates
+
+
+def get_confirmed_updates(
+    repository_dir: Path,
+    computer_branch: str,
+    updates: Sequence[FileUpdate],
+    *,
+    dry_run: bool,
+    interactive: bool,
+) -> list[FileUpdate] | None:
+    """Log the diffs of the given updates and ask the user for confirmation.
+
+    :param repository_dir: Path of the cloned Git repository.
+    :param computer_branch: Name of the computer branch.
+    :param updates: Updates to apply.
+    :param dry_run: Whether to log that the files would be updated instead of that they are updated.
+    :param interactive: Whether to ask for confirmation. If ``False``, no confirmation is required.
+    :return: Updates that change a file, or ``None`` if the user declined to apply the changes.
+    """
+    changed_updates = get_changed_updates(updates, dry_run=dry_run, interactive=interactive)
+    if not interactive or not (changed_updates or has_commits_to_push(repository_dir, computer_branch)):
+        return changed_updates
+    answer = input("Apply these changes? [y/N] ").strip().lower()
+    if answer in {"y", "yes"}:
+        return changed_updates
+    _logger.info("changes not applied")
+    return None
+
+
+def write_updates(updates: Sequence[FileUpdate], *, dry_run: bool) -> None:
+    """Write the given updates to the files.
+
+    :param updates: Updates to write.
+    :param dry_run: Whether to not write to local files.
+    """
+    for update in updates:
+        if not dry_run or not update.local:
+            update.path.parent.mkdir(parents=True, exist_ok=True)
+            update.path.write_text(update.text, newline="\n")
 
 
 def checkout_computer_branch(repository_dir: Path, computer: str, *, create_from_root: bool) -> None:
@@ -469,6 +547,22 @@ def get_unmerged_paths(repository_dir: Path) -> list[str]:
     return [L for L in output.splitlines() if L]
 
 
+def has_commits_to_push(repository_dir: Path, computer_branch: str) -> bool:
+    """Check whether the main branch or the computer branch has commits that are not in the remote repository.
+
+    :param repository_dir: Path of the cloned Git repository.
+    :param computer_branch: Name of the computer branch.
+    :return: Whether there are commits to push.
+    """
+    for branch in (MAIN_BRANCH, computer_branch):
+        remote_ref = f"{REMOTE}/{branch}"
+        if not branch_exists(repository_dir, remote_ref):
+            return True
+        if int(run_git(repository_dir, "rev-list", "--count", f"{remote_ref}..{branch}").stdout) > 0:
+            return True
+    return False
+
+
 def push_branches(repository_dir: Path, computer_branch: str, *, dry_run: bool = False) -> None:
     """Push the main branch and the computer branch to the remote repository.
 
@@ -476,6 +570,9 @@ def push_branches(repository_dir: Path, computer_branch: str, *, dry_run: bool =
     :param computer_branch: Name of the computer branch.
     :param dry_run: Whether to perform a dry run without actually pushing.
     """
+    if not has_commits_to_push(repository_dir, computer_branch):
+        _logger.info("nothing to push")
+        return
     if dry_run:
         _logger.info("would push %s and %s", MAIN_BRANCH, computer_branch)
         return
