@@ -447,7 +447,7 @@ def get_confirmed_updates(
     changed_updates = get_changed_updates(updates, dry_run=dry_run, interactive=interactive)
     if not interactive or not (changed_updates or has_commits_to_push(repository_dir, computer_branch)):
         return changed_updates
-    answer = input("Apply these changes? [y/N] ").strip().lower()
+    answer = input("Apply these changes? [y/N]\n").strip().lower()
     if answer in {"y", "yes"}:
         return changed_updates
     _logger.info("changes not applied")
